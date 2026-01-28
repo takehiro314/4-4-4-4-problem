@@ -1,17 +1,9 @@
 from fractions import Fraction
 from collections import defaultdict
 
-def add(a, b): return a + b
-def sub(a, b): return a - b
-def mul(a, b): return a * b
-def div(a, b):
-    if b == 0:
-        raise ZeroDivisionError
-    return a / b
-
-ops = [add, sub, mul, div]
-op_symbols = ["+", "-", "*", "/"]
-
+# ==============================
+# 循環小数を ( ) 付きで文字列化
+# ==============================
 def fraction_to_decimal(frac: Fraction) -> str:
     sign = "-" if frac < 0 else ""
     frac = abs(frac)
@@ -20,11 +12,12 @@ def fraction_to_decimal(frac: Fraction) -> str:
     integer = n // d
     rem = n % d
 
+    # 割り切れる場合
     if rem == 0:
         return sign + str(integer)
 
     digits = []
-    seen = {}
+    seen = {}  # 余り → 位置
 
     pos = 0
     while rem != 0:
@@ -39,81 +32,93 @@ def fraction_to_decimal(frac: Fraction) -> str:
         rem %= d
         pos += 1
 
+    # 循環しなかった場合（理論上ほぼ出ない）
     return f"{sign}{integer}." + "".join(digits)
 
-def evaluate(form, a, b, c, d, o1, o2, o3, s1, s2, s3):
-    try:
-        if form == 0:
-            return o3(o2(o1(a, b), c), d), f"4{s1}4{s2}4{s3}4"
 
-        elif form == 1:
-            return o3(o2(o1(a, b), c), d), f"((4{s1}4){s2}4){s3}4"
+# ==============================
+# 括弧構造（表示と計算で完全一致）
+# ==============================
+forms = [
+    "A o1 B o2 C o3 D",          #（44 4 4）
 
-        elif form == 2:
-            return o3(o1(a, o2(b, c)), d), f"(4{s1}(4{s2}4)){s3}4"
+    "(A o1 B) o2 C o3 D",        # (44)44
+    "A o1 (B o2 C) o3 D",        # 4(44)4
+    "A o1 B o2 (C o3 D)",        # 44(44)
+    "(A o1 B o2 C) o3 D",        # (444)4
+    "A o1 (B o2 C o3 D)",        # 4(444)
+    "((A o1 B) o2 C) o3 D",      # ((44)4)4
+    "(A o1 (B o2 C)) o3 D",      # (4(44))4
+    "A o1 ((B o2 C) o3 D)",      # 4((44)4)
+    "A o1 (B o2 (C o3 D))",      # 4(4(44))
+    "(A o1 B) o2 (C o3 D)",      # (44)(44)
+]
 
-        elif form == 3:
-            return o1(a, o3(o2(b, c), d)), f"4{s1}((4{s2}4){s3}4)"
-
-        elif form == 4:
-            return o1(a, o2(b, o3(c, d))), f"4{s1}(4{s2}(4{s3}4))"
-
-        elif form == 5:
-            return o2(o1(a, b), o3(c, d)), f"(4{s1}4){s2}(4{s3}4)"
-
-        elif form == 6:
-            return o2(o1(o1(a, b), c), d), f"((4{s1}4){s2}4){s3}4"
-
-        elif form == 7:
-            return o1(a, o2(o2(b, c), d)), f"4{s1}((4{s2}4){s3}4)"
-
-        elif form == 8:
-            return o3(o1(a, b), o2(c, d)), f"(4{s1}4){s3}(4{s2}4)"
-
-        elif form == 9:
-            return o1(o1(a, b), o2(c, d)), f"((4{s1}4){s2}(4{s3}4))"
-
-        elif form == 10:
-            return o1(a, o1(o2(b, c), d)), f"4{s1}((4{s2}4){s3}4)"
-
-    except ZeroDivisionError:
-        return "ERROR", "ERROR"
-
-def sort_key(result_str):
-    if result_str == "ERROR":
-        return (1, 0)   
-    if "(" in result_str:
-        return (0, float(result_str.replace("(", "").replace(")", "")))
-    return (0, float(result_str))
+# 演算子
+op_symbols = ["+", "-", "*", "/"]
 
 results = defaultdict(int)
 
-for i in range(1, 705):
-    form = (i - 1) // 64
-    r = (i - 1) % 64
+count = 0
 
-    idx1 = r // 16
-    idx2 = (r % 16) // 4
-    idx3 = r % 4
+# ==============================
+# 全探索
+# ==============================
+for form_idx, form in enumerate(forms):
+    for i in range(64):
+        # 64通りの演算子選択
+        o1 = op_symbols[i // 16]
+        o2 = op_symbols[(i % 16) // 4]
+        o3 = op_symbols[i % 4]
 
-    o1, o2, o3 = ops[idx1], ops[idx2], ops[idx3]
-    s1, s2, s3 = op_symbols[idx1], op_symbols[idx2], op_symbols[idx3]
+        # Fraction 用の数値トークン
+        A = "Fraction(4)"
+        B = "Fraction(4)"
+        C = "Fraction(4)"
+        D = "Fraction(4)"
 
-    value, expr = evaluate(
-        form,
-        Fraction(4), Fraction(4), Fraction(4), Fraction(4),
-        o1, o2, o3,
-        s1, s2, s3
-    )
+        # 式文字列生成（表示と計算で共通）
+        expr = (
+            form
+            .replace("A", A)
+            .replace("B", B)
+            .replace("C", C)
+            .replace("D", D)
+            .replace("o1", o1)
+            .replace("o2", o2)
+            .replace("o3", o3)
+        )
 
-    if value == "ERROR":
-        result_str = "ERROR"
-    else:
-        result_str = fraction_to_decimal(value)
+        count += 1
 
-    print(f"{i:3d} : {expr} = {result_str}")
-    results[result_str] += 1
+        # 評価
+        try:
+            value = eval(expr)
+            result_str = fraction_to_decimal(value)
+        except ZeroDivisionError:
+            result_str = "ERROR"
 
+        # 表示用（Fraction を 4 に戻す）
+        display_expr = expr.replace("Fraction(4)", "4")
+
+        print(f"{count:3d} : {display_expr} = {result_str}")
+        results[result_str] += 1
+
+
+# ==============================
+# 並び替え用キー（値の昇順）
+# ==============================
+def sort_key(s):
+    if s == "ERROR":
+        return (1, 0)
+    if "(" in s:
+        return (0, float(s.replace("(", "").replace(")", "")))
+    return (0, float(s))
+
+
+# ==============================
+# 集計結果出力
+# ==============================
 print("\n--- 集計結果（値の昇順） ---")
 for k in sorted(results.keys(), key=sort_key):
     print(f"{k} : {results[k]}")
